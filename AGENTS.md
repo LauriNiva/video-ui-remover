@@ -27,7 +27,10 @@ Update these files when implementation materially changes project state.
 - Use local video inpainting.
 - Prefer ProPainter / propainter-delogo rather than implementing ML from scratch.
 - Prefer processing only a small padded crop around the UI.
-- SwiftUI should be a thin native frontend.
+- Desktop stack: Electron + React + TypeScript.
+- Keep all heavy video/ML work outside the Electron renderer.
+- Use the Electron main process to launch the local backend.
+- Keep preload IPC narrow and typed.
 - Do not introduce an LLM dependency into the shipped app.
 - Never overwrite the source video.
 
@@ -47,16 +50,25 @@ Do not add without a concrete need:
 - OCR
 - telemetry
 - elaborate design system
-- dependency injection framework
 - premature abstractions for multiple games
 
-Prefer straightforward code and explicit types over generic frameworks.
+Prefer straightforward TypeScript and explicit IPC contracts over frameworks or generic abstractions.
+
+## Electron safety / architecture
+
+- Do not enable Node integration in the renderer.
+- Use context isolation.
+- Expose only required operations through preload.
+- Do not send raw video buffers over IPC.
+- Do not execute user paths through shell strings.
+- Use argument arrays with spawned processes.
+- Treat the Python/ProPainter backend as a separate local process.
 
 ## Development order
 
 1. Prove the inpainting result manually.
 2. Make the backend invocation reproducible.
-3. Build the smallest SwiftUI wrapper.
+3. Build the smallest Electron wrapper.
 4. Add error handling.
 5. Improve UX only after the core result is good.
 
@@ -76,46 +88,24 @@ Backend concepts such as FFmpeg, MPS, RAFT, PyTorch, crop scale, masks, and mode
 
 ## Planning file maintenance
 
-### PROJECT_STATE.md
+Update `PROJECT_STATE.md` when architecture, backend/model choice, scope, or validated assumptions change.
 
-Update when:
+Keep `TODO_SIMPLE.md` short and human-readable.
 
-- architecture changes
-- backend/model choice changes
-- scope changes
-- a major assumption is validated or disproved
+Use `TODO.md` for detailed implementation steps.
 
-### TODO_SIMPLE.md
-
-Keep this short and human-readable.
-
-Check off completed milestones and add only the next important tasks.
-
-### TODO.md
-
-Use for detailed implementation steps and technical notes.
-
-### USER_ACTIONS.md
-
-Add entries only when a human must:
-
-- answer an agent question
-- perform a manual visual/test action
-- provide footage or another external resource
-- change something outside the repo
-
-Remove or mark items complete once resolved.
+Add entries to `USER_ACTIONS.md` only when a human must answer a question, perform a manual test, provide footage, or change something outside the repo.
 
 ## Agent behavior
 
 When blocked by a missing user action:
 
 1. record it in `USER_ACTIONS.md`
-2. continue with any independent work that is still safe and useful
+2. continue with independent work that is still safe and useful
 3. do not invent test results
 
 When completing meaningful work:
 
 1. update the relevant TODO files
 2. update PROJECT_STATE if assumptions changed
-3. note any required manual verification in USER_ACTIONS
+3. note required manual verification in USER_ACTIONS
