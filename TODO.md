@@ -15,13 +15,7 @@ The UI wrapper should not be built until the cleanup result is proven good enoug
   - "Move To" text
   - small safety margin
 - Process a 3–10 second clip.
-- Inspect:
-  - static backgrounds
-  - grass / foliage
-  - water
-  - moving characters
-  - camera pans
-  - lighting / particle effects
+- Inspect static backgrounds, foliage, water, moving characters, camera pans, lighting, and particle effects.
 - Confirm audio survives the output pipeline.
 - Compare Normal vs High settings.
 - Record approximate processing speed and peak memory.
@@ -57,7 +51,7 @@ Create a reproducible local processing environment.
 - avoid modifying source video
 - support paths containing spaces
 - return useful exit codes and stderr
-- expose a simple CLI contract for the GUI
+- expose a simple CLI contract for Electron
 
 Example target interface:
 
@@ -69,17 +63,13 @@ video-ui-remover-backend \
   --quality normal
 ```
 
-The exact implementation may call propainter-delogo underneath.
-
 ---
 
 ## Phase 2 — Preset / mask model
 
-Create a simple preset model.
+Create a simple preset model using normalized coordinates.
 
-Store normalized values rather than only absolute 4K pixels.
-
-Example conceptual structure:
+Conceptual structure:
 
 ```
 BG3MoveToPreset
@@ -90,39 +80,49 @@ BG3MoveToPreset
 - padding
 ```
 
-Convert to integer pixel coordinates after probing the video.
-
-### MVP support
+MVP support:
 
 - 16:9 footage
 - primary target: 3840×2160
-- optionally allow 1920×1080 and 2560×1440 automatically through normalized scaling
+- optionally scale automatically to 1920×1080 and 2560×1440
 
 Reject unsupported layouts clearly rather than guessing.
 
 ---
 
-## Phase 3 — SwiftUI shell
+## Phase 3 — Electron shell
 
-Create the macOS app.
+Create the desktop app with:
+
+- Electron
+- React
+- TypeScript
 
 Suggested structure:
 
 ```
-VideoUIRemover/
-├── App/
-├── Models/
-│   ├── VideoInfo.swift
-│   └── CleanupPreset.swift
-├── Services/
-│   ├── VideoProbe.swift
-│   ├── ProcessRunner.swift
-│   └── CleanupService.swift
-└── Views/
-    ├── ContentView.swift
-    ├── DropZone.swift
-    └── ProcessingStatusView.swift
+app/
+├── main/
+│   ├── main.ts
+│   ├── ipc.ts
+│   ├── processRunner.ts
+│   └── videoProbe.ts
+├── preload/
+│   └── preload.ts
+└── renderer/
+    ├── App.tsx
+    ├── components/
+    └── types/
 ```
+
+Architecture rules:
+
+- renderer must not process video
+- renderer must not receive raw video buffers
+- preload exposes a minimal typed API
+- main process owns filesystem access, native dialogs, Finder integration, and backend process execution
+- backend runs as a separate child process
+- IPC should carry only paths, commands, progress, status, and errors
 
 ### Main screen
 
@@ -140,13 +140,13 @@ Support:
 - completion state
 - Show in Finder
 
-Keep all advanced/backend details hidden.
+Keep backend details hidden.
 
 ---
 
 ## Phase 4 — Video metadata
 
-Use ffprobe.
+Use ffprobe from the main/backend layer.
 
 Read at minimum:
 
@@ -157,39 +157,29 @@ Read at minimum:
 - video codec
 - presence of audio
 
-Validate:
-
-- supported extension/container
-- 16:9
-- sensible resolution
-- readable file
-
-Do not require a specific codec if the backend can decode it.
+Validate supported container, 16:9 layout, sensible resolution, and readable input.
 
 ---
 
 ## Phase 5 — Process execution
 
-Implement a small ProcessRunner around Foundation `Process`.
+Use Node's `child_process.spawn()` in the Electron main process.
 
 Responsibilities:
 
-- launch backend executable
-- pass arguments safely
+- launch backend executable directly
+- pass arguments as an argument array
 - capture stdout/stderr
-- surface failures
+- surface failures through typed IPC
 - support cancellation if straightforward
-- never invoke a shell just to interpolate user-controlled paths
-
-CleanupService should translate app-level options into backend arguments.
+- avoid shell interpolation for user-controlled paths
+- keep processing fully outside the renderer
 
 ---
 
 ## Phase 6 — Output handling
 
-Generate output alongside the source by default.
-
-Rules:
+Generate output beside the source by default:
 
 ```
 clip.mp4
@@ -204,15 +194,12 @@ After success:
 
 - show output path
 - provide Show in Finder
-- optionally provide Open With… later
 
 ---
 
 ## Phase 7 — Progress UX
 
-Start simple.
-
-Acceptable MVP states:
+Start with coarse states:
 
 1. Preparing
 2. Reading video
@@ -220,42 +207,34 @@ Acceptable MVP states:
 4. Encoding output
 5. Finished
 
-If backend stdout provides reliable frame/scene progress, map it to a percentage later.
-
-Avoid pretending to have exact progress if it is not reliable.
+If backend output later provides reliable frame/scene progress, map it to a percentage.
 
 ---
 
 ## Phase 8 — Preview mode
 
-Useful but not required before the first end-to-end app.
+Add later if useful:
 
-Add a "Test 3 seconds" action that:
-
-- chooses a representative timestamp
-- extracts/processes a short section
-- opens or reveals the result
-
-This is useful for verifying the mask and quality before processing a long clip.
+- process a representative 3-second segment
+- reveal or open the preview
+- use it to verify mask and quality before a long run
 
 ---
 
 ## Phase 9 — Developer mask calibration
 
-Add only after the main path works.
-
-A simple internal/debug tool can:
+Optional debug/developer tool:
 
 - extract one frame
-- display it
+- render it in the React UI
 - overlay a draggable/resizable rectangle
 - save normalized coordinates
 
-This is for tuning presets, not for normal users.
+Not part of the normal user flow.
 
 ---
 
-## Phase 10 — Hardening
+## Phase 10 — Packaging and hardening
 
 Test:
 
@@ -265,12 +244,22 @@ Test:
 - missing weights
 - failed FFmpeg
 - out-of-memory conditions
-- cancelled job
+- cancellation
 - source without audio
 - HEVC/H.264 input
-- 30/60 fps footage
+- 30/60 fps
 - long 4K clips
 - sleep/wake during processing
+
+For the first personal-use version, keep the backend externally installed.
+
+Only later investigate bundling:
+
+- Electron packaging
+- signing/notarization
+- FFmpeg distribution
+- Python/runtime bundling
+- model weight download/setup
 
 ---
 
@@ -279,14 +268,13 @@ Test:
 Only consider after the MVP is useful:
 
 - batch cleanup
-- multiple input files
 - queue
 - additional BG3 HUD presets
 - arbitrary user-drawn masks
 - before/after comparison
-- background processing notifications
+- completion notifications
 - bundled runtime
 - updater
-- signed/notarized releases
+- Windows support
 - other games
 - optional cloud backend
