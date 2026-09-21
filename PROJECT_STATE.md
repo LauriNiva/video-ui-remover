@@ -28,17 +28,20 @@ The app should:
 
 ## Technology decisions
 
-### macOS UI
+### Desktop app
 
-Use **Swift + SwiftUI**.
+Use **Electron + React + TypeScript**.
 
-Keep the native app thin. It should mainly handle:
+Keep Electron thin. The renderer should only handle UI state and presentation. Large video data must not be loaded into the renderer or passed through IPC.
 
-- file selection / drag-and-drop
-- metadata display
-- launching the backend process
-- status / errors
-- output handling
+Recommended split:
+
+- renderer: React UI
+- preload: narrow typed IPC bridge
+- main process: file dialogs, filesystem integration, process launching
+- local backend: Python / ProPainter / FFmpeg
+
+The Electron main process launches the local cleanup backend using `child_process.spawn()` or equivalent and forwards only status/progress messages to the renderer.
 
 ### Inpainting backend
 
@@ -153,7 +156,7 @@ Use a one-time local backend setup, for example:
 └── model-weights/
 ```
 
-The SwiftUI app may assume this backend is installed.
+The Electron app may assume this backend is installed.
 
 A setup script can install/check:
 
@@ -164,7 +167,7 @@ A setup script can install/check:
 - ProPainter / wrapper
 - model weights
 
-Later, if the app proves useful, package dependencies more cleanly.
+Later, if the app proves useful, package the Electron app and backend dependencies more cleanly.
 
 ## Non-goals for MVP
 
@@ -179,9 +182,9 @@ Do not add yet:
 - party HUD removal
 - arbitrary masks
 - multiple games
-- automatic App Store distribution
 - bundled Python/PyTorch runtime
 - LLM integration
+- cross-platform support unless it comes essentially for free
 
 ## Validation target
 
